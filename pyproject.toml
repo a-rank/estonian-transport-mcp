@@ -1,0 +1,18 @@
+[project]
+name = "estonian-transport-mcp"
+version = "1.0.0"
+description = "MCP server for Estonian public transport timetables via peatus.ee"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Allan", email = "allan@rank.ee" }]
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+estonian-transport-mcp = "estonian_transport_mcp:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
