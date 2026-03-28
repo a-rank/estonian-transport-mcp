@@ -17,6 +17,12 @@ async def _graphql(query: str, variables: dict | None = None) -> dict:
             OTP_GRAPHQL_URL,
             json={"query": query, "variables": variables or {}},
         )
+        if resp.status_code == 500:
+            raise RuntimeError(
+                "The peatus.ee API returned a server error. This can happen when "
+                "coordinates are outside Estonia, the date is too far in the future, "
+                "or no route exists between the given points. Try adjusting your query."
+            )
         resp.raise_for_status()
         data = resp.json()
         if errors := data.get("errors"):
