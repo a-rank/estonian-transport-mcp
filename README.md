@@ -49,7 +49,11 @@ Add to your MCP settings (`.claude/settings.json` or project-level `.mcp.json`):
 
 ### Claude Desktop
 
-Add to `claude_desktop_config.json`:
+Config file location:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+Add to the `mcpServers` section:
 
 ```json
 {
@@ -61,6 +65,21 @@ Add to `claude_desktop_config.json`:
   }
 }
 ```
+
+> **Note**: Claude Desktop may not find `uvx` in its PATH. If the server fails to start, replace `"uvx"` with the full path. Find it by running `which uvx` in your terminal, then use that path:
+>
+> ```json
+> {
+>   "mcpServers": {
+>     "estonian-transport": {
+>       "command": "/Users/yourname/.local/bin/uvx",
+>       "args": ["estonian-transport-mcp"]
+>     }
+>   }
+> }
+> ```
+
+Restart Claude Desktop after saving the config.
 
 ### Manual testing
 
