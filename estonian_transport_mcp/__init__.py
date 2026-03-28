@@ -1,5 +1,9 @@
 """MCP server for Estonian public transport timetables."""
 
+from importlib.metadata import version
+
+__version__ = version("estonian-transport-mcp")
+
 from estonian_transport_mcp.api import graphql, OTP_GRAPHQL_URL, TALLINN_GPS_URL
 from estonian_transport_mcp.formatting import fmt_seconds, fmt_time_of_day
 from estonian_transport_mcp.tools import (

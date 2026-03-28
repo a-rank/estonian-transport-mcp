@@ -6,6 +6,13 @@ from estonian_transport_mcp.server import mcp
 
 
 @mcp.tool()
+async def server_version() -> str:
+    """Return the version of this MCP server."""
+    from estonian_transport_mcp import __version__
+    return f"estonian-transport-mcp v{__version__}"
+
+
+@mcp.tool()
 async def search_stops(name: str) -> str:
     """Search for Estonian public transport stops by name.
 
@@ -39,28 +46,66 @@ async def search_stops(name: str) -> str:
 
 
 @mcp.tool()
-async def get_departures(stop_id: str, limit: int = 15) -> str:
+async def get_departures(
+    stop_id: str,
+    limit: int = 15,
+    date: str | None = None,
+    time: str | None = None,
+) -> str:
     """Get upcoming departures from a specific stop.
 
     Args:
         stop_id: GTFS stop ID (e.g. '1:4173'). Use search_stops to find IDs.
         limit: Number of departures to return (default 15, max 50)
+        date: Date to get departures for, YYYY-MM-DD (default: today)
+        time: Time to get departures from, HH:MM (default: now)
     """
     n = min(limit, 50)
-    data = await graphql(
-        """
-        query($id: String!, $n: Int!) {
-            stop(id: $id) {
-                name code gtfsId
-                stoptimesWithoutPatterns(numberOfDepartures: $n) {
-                    scheduledDeparture realtimeDeparture realtime headsign
-                    trip { route { shortName longName mode agency { name } } }
+
+    start_time = None
+    if date or time:
+        from datetime import datetime, timezone, timedelta
+        eet = timezone(timedelta(hours=2))
+        now = datetime.now(eet)
+        d = datetime.strptime(date, "%Y-%m-%d").date() if date else now.date()
+        if time:
+            parts = time.split(":")
+            h, m = int(parts[0]), int(parts[1])
+            dt = datetime(d.year, d.month, d.day, h, m, tzinfo=eet)
+        else:
+            dt = datetime(d.year, d.month, d.day, tzinfo=eet)
+        start_time = int(dt.timestamp())
+
+    if start_time is not None:
+        data = await graphql(
+            """
+            query($id: String!, $n: Int!, $startTime: Long!) {
+                stop(id: $id) {
+                    name code gtfsId
+                    stoptimesWithoutPatterns(numberOfDepartures: $n, startTime: $startTime) {
+                        scheduledDeparture realtimeDeparture realtime headsign
+                        trip { route { shortName longName mode agency { name } } }
+                    }
                 }
             }
-        }
-        """,
-        {"id": stop_id, "n": n},
-    )
+            """,
+            {"id": stop_id, "n": n, "startTime": start_time},
+        )
+    else:
+        data = await graphql(
+            """
+            query($id: String!, $n: Int!) {
+                stop(id: $id) {
+                    name code gtfsId
+                    stoptimesWithoutPatterns(numberOfDepartures: $n) {
+                        scheduledDeparture realtimeDeparture realtime headsign
+                        trip { route { shortName longName mode agency { name } } }
+                    }
+                }
+            }
+            """,
+            {"id": stop_id, "n": n},
+        )
     stop = data["stop"]
     if not stop:
         return f"Stop not found: {stop_id}"
@@ -90,6 +135,7 @@ async def plan_trip(
     time: str | None = None,
     arrive_by: bool = False,
     num_results: int = 3,
+    max_walk_distance: float | None = None,
 ) -> str:
     """Plan a public transport trip between two locations in Estonia.
 
@@ -102,6 +148,7 @@ async def plan_trip(
         time: Travel time HH:MM (default: now)
         arrive_by: If true, time is desired arrival time
         num_results: Number of itinerary options (default 3)
+        max_walk_distance: Maximum walking distance in meters (default: ~2000)
     """
     # API requires HH:MM:SS format
     if time and len(time) == 5 and time[2] == ":":
@@ -110,9 +157,11 @@ async def plan_trip(
         data = await graphql(
             """
             query($fromLat: Float!, $fromLon: Float!, $toLat: Float!, $toLon: Float!,
-                  $numItineraries: Int!, $arriveBy: Boolean, $date: String, $time: String) {
+                  $numItineraries: Int!, $arriveBy: Boolean, $date: String, $time: String,
+                  $maxWalkDistance: Float) {
                 plan(from: {lat: $fromLat, lon: $fromLon}, to: {lat: $toLat, lon: $toLon},
-                     numItineraries: $numItineraries, arriveBy: $arriveBy, date: $date, time: $time) {
+                     numItineraries: $numItineraries, arriveBy: $arriveBy, date: $date, time: $time,
+                     maxWalkDistance: $maxWalkDistance) {
                     itineraries {
                         startTime endTime duration walkDistance
                         legs {
@@ -131,6 +180,7 @@ async def plan_trip(
                 "toLat": to_lat, "toLon": to_lon,
                 "numItineraries": num_results, "arriveBy": arrive_by,
                 "date": date, "time": time,
+                "maxWalkDistance": max_walk_distance,
             },
         )
     except RuntimeError as e:
