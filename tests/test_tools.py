@@ -1,13 +1,13 @@
-"""Tests for Estonian Transport MCP server."""
+"""Unit tests for Estonian Transport MCP server (mocked HTTP)."""
 
 import pytest
 import httpx
 import respx
 
 from estonian_transport_mcp import (
-    _graphql,
-    _fmt_seconds,
-    _fmt_time_of_day,
+    graphql,
+    fmt_seconds,
+    fmt_time_of_day,
     search_stops,
     get_departures,
     plan_trip,
@@ -24,31 +24,31 @@ from estonian_transport_mcp import (
 
 class TestFormatSeconds:
     def test_minutes_only(self):
-        assert _fmt_seconds(300) == "5m"
+        assert fmt_seconds(300) == "5m"
 
     def test_hours_and_minutes(self):
-        assert _fmt_seconds(3900) == "1h 5m"
+        assert fmt_seconds(3900) == "1h 5m"
 
     def test_zero(self):
-        assert _fmt_seconds(0) == "0m"
+        assert fmt_seconds(0) == "0m"
 
     def test_exact_hour(self):
-        assert _fmt_seconds(7200) == "2h 0m"
+        assert fmt_seconds(7200) == "2h 0m"
 
 
 class TestFormatTimeOfDay:
     def test_morning(self):
-        assert _fmt_time_of_day(8 * 3600 + 30 * 60) == "08:30"
+        assert fmt_time_of_day(8 * 3600 + 30 * 60) == "08:30"
 
     def test_midnight(self):
-        assert _fmt_time_of_day(0) == "00:00"
+        assert fmt_time_of_day(0) == "00:00"
 
     def test_afternoon(self):
-        assert _fmt_time_of_day(15 * 3600 + 45 * 60) == "15:45"
+        assert fmt_time_of_day(15 * 3600 + 45 * 60) == "15:45"
 
     def test_past_midnight(self):
         # OTP can return >24h for next-day trips
-        assert _fmt_time_of_day(25 * 3600) == "25:00"
+        assert fmt_time_of_day(25 * 3600) == "25:00"
 
 
 # --- Unit tests for GraphQL client ---
@@ -61,7 +61,7 @@ class TestGraphqlClient:
         respx.post(OTP_GRAPHQL_URL).mock(
             return_value=httpx.Response(200, json={"data": {"stops": []}})
         )
-        result = await _graphql("{ stops { name } }")
+        result = await graphql("{ stops { name } }")
         assert result == {"stops": []}
 
     @respx.mock
@@ -71,7 +71,7 @@ class TestGraphqlClient:
             return_value=httpx.Response(500, text="Internal Server Error")
         )
         with pytest.raises(RuntimeError, match="peatus.ee API returned a server error"):
-            await _graphql("{ stops { name } }")
+            await graphql("{ stops { name } }")
 
     @respx.mock
     @pytest.mark.asyncio
@@ -82,7 +82,7 @@ class TestGraphqlClient:
             )
         )
         with pytest.raises(RuntimeError, match="Field not found"):
-            await _graphql("{ bad_query }")
+            await graphql("{ bad_query }")
 
     @respx.mock
     @pytest.mark.asyncio
@@ -91,7 +91,7 @@ class TestGraphqlClient:
             return_value=httpx.Response(403, text="Forbidden")
         )
         with pytest.raises(httpx.HTTPStatusError):
-            await _graphql("{ stops { name } }")
+            await graphql("{ stops { name } }")
 
 
 # --- Tests for search_stops ---
@@ -420,7 +420,6 @@ class TestTallinnVehicles:
         assert "Tram 2" in result
         assert "Bus 17" in result
         assert "Trolleybus 3" in result
-        # Vehicle on line 0 and vehicle with 0,0 coords should be filtered
         assert "vehicle 55" not in result
         assert "vehicle 77" not in result
 

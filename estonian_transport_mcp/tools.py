@@ -1,43 +1,8 @@
-"""MCP server for Estonian public transport timetables via peatus.ee OpenTripPlanner API."""
+"""MCP tool definitions for Estonian transport."""
 
-import httpx
-from mcp.server.fastmcp import FastMCP
-
-OTP_GRAPHQL_URL = "https://api.peatus.ee/routing/v1/routers/estonia/index/graphql"
-TALLINN_GPS_URL = "http://transport.tallinn.ee/gps.txt"
-
-VEHICLE_TYPES = {"1": "trolleybus", "2": "bus", "3": "tram"}
-
-mcp = FastMCP("estonian-transport")
-
-
-async def _graphql(query: str, variables: dict | None = None) -> dict:
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            OTP_GRAPHQL_URL,
-            json={"query": query, "variables": variables or {}},
-        )
-        if resp.status_code == 500:
-            raise RuntimeError(
-                "The peatus.ee API returned a server error. This can happen when "
-                "coordinates are outside Estonia, the date is too far in the future, "
-                "or no route exists between the given points. Try adjusting your query."
-            )
-        resp.raise_for_status()
-        data = resp.json()
-        if errors := data.get("errors"):
-            raise RuntimeError(f"GraphQL error: {', '.join(e['message'] for e in errors)}")
-        return data["data"]
-
-
-def _fmt_seconds(s: int) -> str:
-    h, m = divmod(s // 60, 60)
-    return f"{h}h {m}m" if h else f"{m}m"
-
-
-def _fmt_time_of_day(s: int) -> str:
-    h, m = divmod(s // 60, 60)
-    return f"{h:02d}:{m:02d}"
+from estonian_transport_mcp.api import graphql, fetch_tallinn_gps, VEHICLE_TYPES
+from estonian_transport_mcp.formatting import fmt_seconds, fmt_time_of_day
+from estonian_transport_mcp.server import mcp
 
 
 @mcp.tool()
@@ -47,7 +12,7 @@ async def search_stops(name: str) -> str:
     Args:
         name: Stop name to search for (e.g. 'Viru', 'Balti jaam', 'Tartu')
     """
-    data = await _graphql(
+    data = await graphql(
         """
         query($name: String!) {
             stops(name: $name) {
@@ -82,7 +47,7 @@ async def get_departures(stop_id: str, limit: int = 15) -> str:
         limit: Number of departures to return (default 15, max 50)
     """
     n = min(limit, 50)
-    data = await _graphql(
+    data = await graphql(
         """
         query($id: String!, $n: Int!) {
             stop(id: $id) {
@@ -106,8 +71,8 @@ async def get_departures(stop_id: str, limit: int = 15) -> str:
 
     lines = []
     for d in deps:
-        time = _fmt_time_of_day(d["realtimeDeparture"])
-        scheduled = _fmt_time_of_day(d["scheduledDeparture"])
+        time = fmt_time_of_day(d["realtimeDeparture"])
+        scheduled = fmt_time_of_day(d["scheduledDeparture"])
         rt = f" (scheduled {scheduled})" if d["realtime"] and d["realtimeDeparture"] != d["scheduledDeparture"] else ""
         r = d["trip"]["route"]
         lines.append(f"{time}{rt} — {r['mode']} **{r['shortName']}** → {d['headsign']} ({r['agency']['name']})")
@@ -138,7 +103,7 @@ async def plan_trip(
         arrive_by: If true, time is desired arrival time
         num_results: Number of itinerary options (default 3)
     """
-    data = await _graphql(
+    data = await graphql(
         """
         query($fromLat: Float!, $fromLon: Float!, $toLat: Float!, $toLon: Float!,
               $numItineraries: Int!, $arriveBy: Boolean, $date: String, $time: String) {
@@ -169,13 +134,13 @@ async def plan_trip(
 
     results = []
     for i, it in enumerate(itineraries, 1):
-        dur = _fmt_seconds(it["duration"])
+        dur = fmt_seconds(it["duration"])
         walk_km = it["walkDistance"] / 1000
 
         legs = []
         for leg in it["legs"]:
             if leg["mode"] == "WALK":
-                legs.append(f"  Walk {leg['distance']/1000:.1f}km ({_fmt_seconds(leg['duration'])}) to {leg['to']['name']}")
+                legs.append(f"  Walk {leg['distance']/1000:.1f}km ({fmt_seconds(leg['duration'])}) to {leg['to']['name']}")
             else:
                 route = leg.get("route") or {}
                 name = f"{route.get('shortName', '')} ({route.get('agency', {}).get('name', '')})" if route else leg["mode"]
@@ -199,7 +164,7 @@ async def nearby_stops(lat: float, lon: float, radius: int = 500) -> str:
         radius: Search radius in meters (default 500, max 2000)
     """
     r = min(radius, 2000)
-    data = await _graphql(
+    data = await graphql(
         """
         query($lat: Float!, $lon: Float!, $radius: Int!) {
             stopsByRadius(lat: $lat, lon: $lon, radius: $radius) {
@@ -230,7 +195,7 @@ async def get_route(route_id: str) -> str:
     Args:
         route_id: GTFS route ID (e.g. '1:1'). Find these from stop search results.
     """
-    data = await _graphql(
+    data = await graphql(
         """
         query($id: String!) {
             route(id: $id) {
@@ -279,12 +244,10 @@ async def tallinn_vehicles(
         if type_filter is None:
             return f"Unknown vehicle type '{vehicle_type}'. Use 'bus', 'tram', or 'trolleybus'."
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(TALLINN_GPS_URL)
-        resp.raise_for_status()
+    raw = await fetch_tallinn_gps()
 
     vehicles = []
-    for row in resp.text.strip().splitlines():
+    for row in raw.strip().splitlines():
         parts = row.split(",")
         if len(parts) < 7:
             continue
@@ -292,10 +255,8 @@ async def tallinn_vehicles(
         vtype, vline, lng_raw, lat_raw, _, heading, vid = parts[:7]
         destination = parts[9] if len(parts) > 9 else ""
 
-        # Skip vehicles with no GPS
         if lat_raw == "0" or lng_raw == "0":
             continue
-        # Skip vehicles not on a route
         if vline == "0":
             continue
 
@@ -337,11 +298,3 @@ async def tallinn_vehicles(
         )
 
     return f"Active Tallinn vehicles ({len(vehicles)} total, showing up to 50):\n\n" + "\n\n".join(lines_out)
-
-
-def main():
-    mcp.run()
-
-
-if __name__ == "__main__":
-    main()
