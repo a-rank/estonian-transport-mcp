@@ -103,31 +103,38 @@ async def plan_trip(
         arrive_by: If true, time is desired arrival time
         num_results: Number of itinerary options (default 3)
     """
-    data = await graphql(
-        """
-        query($fromLat: Float!, $fromLon: Float!, $toLat: Float!, $toLon: Float!,
-              $numItineraries: Int!, $arriveBy: Boolean, $date: String, $time: String) {
-            plan(from: {lat: $fromLat, lon: $fromLon}, to: {lat: $toLat, lon: $toLon},
-                 numItineraries: $numItineraries, arriveBy: $arriveBy, date: $date, time: $time) {
-                itineraries {
-                    startTime endTime duration walkDistance
-                    legs {
-                        mode startTime endTime duration distance headsign
-                        from { name stop { code name } }
-                        to { name stop { code name } }
-                        route { shortName longName agency { name } }
+    # API requires HH:MM:SS format
+    if time and len(time) == 5 and time[2] == ":":
+        time = time + ":00"
+    try:
+        data = await graphql(
+            """
+            query($fromLat: Float!, $fromLon: Float!, $toLat: Float!, $toLon: Float!,
+                  $numItineraries: Int!, $arriveBy: Boolean, $date: String, $time: String) {
+                plan(from: {lat: $fromLat, lon: $fromLon}, to: {lat: $toLat, lon: $toLon},
+                     numItineraries: $numItineraries, arriveBy: $arriveBy, date: $date, time: $time) {
+                    itineraries {
+                        startTime endTime duration walkDistance
+                        legs {
+                            mode startTime endTime duration distance
+                            from { name stop { code name } }
+                            to { name stop { code name } }
+                            trip { tripHeadsign }
+                            route { shortName longName agency { name } }
+                        }
                     }
                 }
             }
-        }
-        """,
-        {
-            "fromLat": from_lat, "fromLon": from_lon,
-            "toLat": to_lat, "toLon": to_lon,
-            "numItineraries": num_results, "arriveBy": arrive_by,
-            "date": date, "time": time,
-        },
-    )
+            """,
+            {
+                "fromLat": from_lat, "fromLon": from_lon,
+                "toLat": to_lat, "toLon": to_lon,
+                "numItineraries": num_results, "arriveBy": arrive_by,
+                "date": date, "time": time,
+            },
+        )
+    except RuntimeError as e:
+        return str(e)
     itineraries = data["plan"]["itineraries"]
     if not itineraries:
         return "No routes found for this trip."
@@ -144,8 +151,9 @@ async def plan_trip(
             else:
                 route = leg.get("route") or {}
                 name = f"{route.get('shortName', '')} ({route.get('agency', {}).get('name', '')})" if route else leg["mode"]
+                headsign = (leg.get("trip") or {}).get("tripHeadsign") or leg["to"]["name"]
                 legs.append(
-                    f"  {leg['mode']} **{name}** → {leg.get('headsign') or leg['to']['name']}\n"
+                    f"  {leg['mode']} **{name}** → {headsign}\n"
                     f"    {leg['from']['name']} → {leg['to']['name']}"
                 )
 
