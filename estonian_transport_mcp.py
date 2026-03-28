@@ -4,6 +4,9 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 
 OTP_GRAPHQL_URL = "https://api.peatus.ee/routing/v1/routers/estonia/index/graphql"
+TALLINN_GPS_URL = "http://transport.tallinn.ee/gps.txt"
+
+VEHICLE_TYPES = {"1": "trolleybus", "2": "bus", "3": "tram"}
 
 mcp = FastMCP("estonian-transport")
 
@@ -248,6 +251,86 @@ async def get_route(route_id: str) -> str:
         f"ID: `{route['gtfsId']}`\n\n"
         f"Patterns:\n\n" + "\n\n".join(patterns)
     )
+
+
+@mcp.tool()
+async def tallinn_vehicles(
+    vehicle_type: str | None = None,
+    line: str | None = None,
+) -> str:
+    """Get real-time GPS positions of Tallinn public transport vehicles.
+
+    Args:
+        vehicle_type: Filter by type: 'bus', 'tram', or 'trolleybus' (default: all)
+        line: Filter by line/route number (e.g. '2', '17', '42A')
+    """
+    type_filter = None
+    if vehicle_type:
+        for code, name in VEHICLE_TYPES.items():
+            if name == vehicle_type.lower():
+                type_filter = code
+                break
+        if type_filter is None:
+            return f"Unknown vehicle type '{vehicle_type}'. Use 'bus', 'tram', or 'trolleybus'."
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(TALLINN_GPS_URL)
+        resp.raise_for_status()
+
+    vehicles = []
+    for row in resp.text.strip().splitlines():
+        parts = row.split(",")
+        if len(parts) < 7:
+            continue
+
+        vtype, vline, lng_raw, lat_raw, _, heading, vid = parts[:7]
+        destination = parts[9] if len(parts) > 9 else ""
+
+        # Skip vehicles with no GPS
+        if lat_raw == "0" or lng_raw == "0":
+            continue
+        # Skip vehicles not on a route
+        if vline == "0":
+            continue
+
+        if type_filter and vtype != type_filter:
+            continue
+        if line and vline != line:
+            continue
+
+        lat = int(lat_raw) / 1_000_000
+        lon = int(lng_raw) / 1_000_000
+        hdg = int(heading) if heading != "999" else None
+
+        vehicles.append({
+            "type": VEHICLE_TYPES.get(vtype, vtype),
+            "line": vline,
+            "lat": lat,
+            "lon": lon,
+            "heading": hdg,
+            "vehicle_id": vid,
+            "destination": destination,
+        })
+
+    if not vehicles:
+        filters = []
+        if vehicle_type:
+            filters.append(f"type={vehicle_type}")
+        if line:
+            filters.append(f"line={line}")
+        fstr = f" ({', '.join(filters)})" if filters else ""
+        return f"No active vehicles found{fstr}."
+
+    lines_out = []
+    for v in vehicles[:50]:
+        hdg_str = f" heading {v['heading']}°" if v["heading"] is not None else ""
+        dest_str = f" → {v['destination']}" if v["destination"] else ""
+        lines_out.append(
+            f"**{v['type'].title()} {v['line']}**{dest_str} — vehicle {v['vehicle_id']}\n"
+            f"  {v['lat']:.6f}, {v['lon']:.6f}{hdg_str}"
+        )
+
+    return f"Active Tallinn vehicles ({len(vehicles)} total, showing up to 50):\n\n" + "\n\n".join(lines_out)
 
 
 def main():

@@ -11,6 +11,7 @@ An MCP (Model Context Protocol) server that provides Estonian public transport t
 | `plan_trip` | Plan a trip between two coordinates |
 | `nearby_stops` | Find stops near a location |
 | `get_route` | Get route details and stop patterns |
+| `tallinn_vehicles` | Real-time GPS positions of Tallinn buses, trams, trolleybuses |
 
 ## Usage with Claude Code
 
@@ -30,3 +31,4 @@ An MCP (Model Context Protocol) server that provides Estonian public transport t
 - **API**: `api.peatus.ee` — OpenTripPlanner GraphQL endpoint maintained by the Estonian Transport Administration (Transpordiamet)
 - **Coverage**: All Estonian public transport including buses, trams, trolleybuses, trains, and ferries
 - **Realtime**: Includes real-time arrival predictions where available
+- **Tallinn GPS**: `transport.tallinn.ee/gps.txt` — live vehicle positions updated every ~10 seconds (Tallinn only)
