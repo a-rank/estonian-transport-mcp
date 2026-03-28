@@ -84,7 +84,7 @@ npx @modelcontextprotocol/inspector uvx estonian-transport-mcp
 - **Maintained by**: Transpordiamet (Estonian Transport Administration)
 - **Coverage**: All Estonian public transport — buses, trams, trolleybuses, trains, and ferries nationwide
 - **Data**: Stop search, departure times, trip planning, route patterns, real-time arrival predictions
-- **Based on**: [OpenTripPlanner](https://www.opentripplanner.org/) with [Digitransit](https://digitransit.fi/) (forked from Helsinki HSL)
+- **Based on**: [OpenTripPlanner](https://www.opentripplanner.org/) with [Digitransit](https://digitransit.fi/)
 - **Underlying data**: National GTFS feed consolidated from all Estonian transport operators
 
 Used by tools: `search_stops`, `get_departures`, `plan_trip`, `nearby_stops`, `get_route`
