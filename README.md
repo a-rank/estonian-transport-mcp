@@ -1,19 +1,40 @@
 # Estonian Transport MCP
 
-An MCP (Model Context Protocol) server that provides Estonian public transport timetable data. Powered by the [peatus.ee](https://peatus.ee) OpenTripPlanner API.
+An [MCP](https://modelcontextprotocol.io/) server for Estonian public transport — timetables, trip planning, stop search, and real-time vehicle tracking.
 
 ## Tools
 
 | Tool | Description |
 |------|-------------|
-| `search_stops` | Search for stops by name |
-| `get_departures` | Get upcoming departures from a stop |
-| `plan_trip` | Plan a trip between two coordinates |
-| `nearby_stops` | Find stops near a location |
-| `get_route` | Get route details and stop patterns |
-| `tallinn_vehicles` | Real-time GPS positions of Tallinn buses, trams, trolleybuses |
+| `search_stops` | Search for stops by name (e.g. "Viru", "Balti jaam") |
+| `get_departures` | Get upcoming departures from a stop, with real-time predictions |
+| `plan_trip` | Plan a trip between two coordinates with date/time options |
+| `nearby_stops` | Find stops within a radius of a location |
+| `get_route` | Get route details including all stop patterns |
+| `tallinn_vehicles` | Real-time GPS positions of Tallinn buses, trams, and trolleybuses |
 
-## Usage with Claude Code
+## Prerequisites
+
+This server runs via [uvx](https://docs.astral.sh/uv/), a zero-install Python package runner. Install `uv` first:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# or via Homebrew
+brew install uv
+```
+
+No other setup needed — `uvx` automatically downloads dependencies on first run.
+
+## Usage
+
+### Claude Code
+
+Add to your MCP settings (`.claude/settings.json` or project-level `.mcp.json`):
 
 ```json
 {
@@ -26,9 +47,65 @@ An MCP (Model Context Protocol) server that provides Estonian public transport t
 }
 ```
 
-## Data Sources
+### Claude Desktop
 
-- **API**: `api.peatus.ee` — OpenTripPlanner GraphQL endpoint maintained by the Estonian Transport Administration (Transpordiamet)
-- **Coverage**: All Estonian public transport including buses, trams, trolleybuses, trains, and ferries
-- **Realtime**: Includes real-time arrival predictions where available
-- **Tallinn GPS**: `transport.tallinn.ee/gps.txt` — live vehicle positions updated every ~10 seconds (Tallinn only)
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "estonian-transport": {
+      "command": "uvx",
+      "args": ["estonian-transport-mcp"]
+    }
+  }
+}
+```
+
+### Manual testing
+
+```bash
+uvx estonian-transport-mcp
+```
+
+Or test interactively with the MCP Inspector:
+
+```bash
+npx @modelcontextprotocol/inspector uvx estonian-transport-mcp
+```
+
+## Data Sources & APIs
+
+### Peatus.ee — OpenTripPlanner GraphQL API
+
+- **Endpoint**: `https://api.peatus.ee/routing/v1/routers/estonia/index/graphql`
+- **Protocol**: GraphQL over HTTP POST
+- **Authentication**: None (open access)
+- **Maintained by**: Transpordiamet (Estonian Transport Administration)
+- **Coverage**: All Estonian public transport — buses, trams, trolleybuses, trains, and ferries nationwide
+- **Data**: Stop search, departure times, trip planning, route patterns, real-time arrival predictions
+- **Based on**: [OpenTripPlanner](https://www.opentripplanner.org/) with [Digitransit](https://digitransit.fi/) (forked from Helsinki HSL)
+- **Underlying data**: National GTFS feed consolidated from all Estonian transport operators
+
+Used by tools: `search_stops`, `get_departures`, `plan_trip`, `nearby_stops`, `get_route`
+
+### Tallinn Transport — Real-Time Vehicle GPS
+
+- **Endpoint**: `http://transport.tallinn.ee/gps.txt`
+- **Protocol**: Plain-text CSV over HTTP GET
+- **Authentication**: None (open access)
+- **Update frequency**: ~10 seconds
+- **Coverage**: Tallinn city only — buses, trams, and trolleybuses operated by TLT (Tallinna Linnatransport)
+- **Data**: Vehicle type, line number, GPS coordinates (WGS84 microdegrees), heading, vehicle ID, destination
+- **Format**: Each line is one vehicle: `type,line,lon,lat,,heading,vehicle_id,status,unknown,destination`
+  - Vehicle types: `1` = trolleybus, `2` = bus, `3` = tram
+  - Coordinates: integer microdegrees (divide by 1,000,000 for decimal degrees)
+  - Heading `999` = unknown
+
+Used by tools: `tallinn_vehicles`
+
+## Tech Stack
+
+- **Python** with [FastMCP](https://github.com/modelcontextprotocol/python-sdk) (`mcp[cli]`)
+- **httpx** for async HTTP requests
+- **Transport**: stdio (standard MCP transport for local integrations)
