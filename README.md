@@ -110,7 +110,7 @@ Used by tools: `search_stops`, `get_departures`, `plan_trip`, `nearby_stops`, `g
 
 ### Tallinn Transport — Real-Time Vehicle GPS
 
-- **Endpoint**: `http://transport.tallinn.ee/gps.txt`
+- **Endpoint**: `https://transport.tallinn.ee/gps.txt`
 - **Protocol**: Plain-text CSV over HTTP GET
 - **Authentication**: None (open access)
 - **Update frequency**: ~10 seconds
