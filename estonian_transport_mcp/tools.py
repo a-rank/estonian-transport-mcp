@@ -125,31 +125,53 @@ async def get_departures(
     return f"Departures from **{stop['name']}** ({stop.get('code') or stop['gtfsId']}):\n\n" + "\n".join(lines)
 
 
+async def _resolve_place(name: str) -> tuple[float, float] | None:
+    """Resolve a place name to (lat, lon) via stop search."""
+    data = await graphql(
+        'query($name: String!) { stops(name: $name) { name lat lon } }',
+        {"name": name},
+    )
+    stops = data["stops"]
+    if stops:
+        return stops[0]["lat"], stops[0]["lon"]
+    return None
+
+
 @mcp.tool()
 async def plan_trip(
-    from_lat: float,
-    from_lon: float,
-    to_lat: float,
-    to_lon: float,
+    from_place: str,
+    to_place: str,
     date: str | None = None,
     time: str | None = None,
     arrive_by: bool = False,
     num_results: int = 3,
     max_walk_distance: float | None = None,
+    max_transfers: int | None = None,
+    transfer_penalty: int | None = None,
 ) -> str:
     """Plan a public transport trip between two locations in Estonia.
 
     Args:
-        from_lat: Origin latitude
-        from_lon: Origin longitude
-        to_lat: Destination latitude
-        to_lon: Destination longitude
+        from_place: Origin stop or place name (e.g. 'Viru', 'Balti jaam', 'Tartu bussijaam')
+        to_place: Destination stop or place name
         date: Travel date YYYY-MM-DD (default: today)
         time: Travel time HH:MM (default: now)
         arrive_by: If true, time is desired arrival time
         num_results: Number of itinerary options (default 3)
         max_walk_distance: Maximum walking distance in meters (default: ~2000)
+        max_transfers: Maximum number of transfers (default: no limit)
+        transfer_penalty: Penalty per transfer in seconds — higher values prefer fewer transfers (default: 0)
     """
+    origin = await _resolve_place(from_place)
+    if not origin:
+        return f'Could not find a stop matching "{from_place}". Try a different name.'
+    destination = await _resolve_place(to_place)
+    if not destination:
+        return f'Could not find a stop matching "{to_place}". Try a different name.'
+
+    from_lat, from_lon = origin
+    to_lat, to_lon = destination
+
     # API requires HH:MM:SS format
     if time and len(time) == 5 and time[2] == ":":
         time = time + ":00"
@@ -158,10 +180,11 @@ async def plan_trip(
             """
             query($fromLat: Float!, $fromLon: Float!, $toLat: Float!, $toLon: Float!,
                   $numItineraries: Int!, $arriveBy: Boolean, $date: String, $time: String,
-                  $maxWalkDistance: Float) {
+                  $maxWalkDistance: Float, $maxTransfers: Int, $transferPenalty: Int) {
                 plan(from: {lat: $fromLat, lon: $fromLon}, to: {lat: $toLat, lon: $toLon},
                      numItineraries: $numItineraries, arriveBy: $arriveBy, date: $date, time: $time,
-                     maxWalkDistance: $maxWalkDistance) {
+                     maxWalkDistance: $maxWalkDistance, maxTransfers: $maxTransfers,
+                     transferPenalty: $transferPenalty) {
                     itineraries {
                         startTime endTime duration walkDistance
                         legs {
@@ -181,6 +204,8 @@ async def plan_trip(
                 "numItineraries": num_results, "arriveBy": arrive_by,
                 "date": date, "time": time,
                 "maxWalkDistance": max_walk_distance,
+                "maxTransfers": max_transfers,
+                "transferPenalty": transfer_penalty,
             },
         )
     except RuntimeError as e:

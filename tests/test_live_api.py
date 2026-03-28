@@ -109,37 +109,31 @@ class TestPlanTripLive:
     @pytest.mark.asyncio
     async def test_tallinn_short_trip(self):
         """Plan a trip within central Tallinn — Viru to Balti jaam."""
-        result = await plan_trip(59.4369, 24.7535, 59.4403, 24.7372)
+        result = await plan_trip("Viru", "Balti jaam")
         assert "Option 1" in result or "No routes found" in result
 
     @pytest.mark.asyncio
     async def test_tallinn_to_tartu(self):
         """Longer trip — Tallinn to Tartu."""
-        result = await plan_trip(59.437, 24.753, 58.378, 26.729)
+        result = await plan_trip("Viru", "Tartu")
         assert "Option 1" in result or "No routes found" in result
 
     @pytest.mark.asyncio
-    async def test_outside_estonia(self):
-        """Coordinates outside Estonia — Helsinki to Tallinn."""
-        result = await plan_trip(60.17, 24.94, 59.44, 24.75)
-        assert "Option" in result or "No routes found" in result
+    async def test_unknown_place(self):
+        """Unknown place name should return a helpful message."""
+        result = await plan_trip("xyznonexistent12345", "Viru")
+        assert "Could not find" in result
 
     @pytest.mark.asyncio
     async def test_with_date_and_time(self):
         """Verify date and time parameters are accepted."""
-        result = await plan_trip(
-            59.4369, 24.7535, 59.4403, 24.7372,
-            date="2026-04-01", time="09:00",
-        )
+        result = await plan_trip("Viru", "Balti jaam", date="2026-04-01", time="09:00")
         assert "Option 1" in result or "No routes found" in result
 
     @pytest.mark.asyncio
     async def test_arrive_by(self):
         """Test arrive_by parameter."""
-        result = await plan_trip(
-            59.4369, 24.7535, 59.4403, 24.7372,
-            time="10:00", arrive_by=True,
-        )
+        result = await plan_trip("Viru", "Balti jaam", time="10:00", arrive_by=True)
         assert "Option 1" in result or "No routes found" in result
 
 
