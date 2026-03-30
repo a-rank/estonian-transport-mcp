@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background circle - Estonian blue -->
+  <circle cx="256" cy="256" r="256" fill="#0072CE"/>
+
+  <!-- Bus body - white -->
+  <rect x="96" y="140" width="320" height="200" rx="24" fill="#FFFFFF"/>
+
+  <!-- Black stripe - Estonian flag middle -->
+  <rect x="96" y="220" width="320" height="60" fill="#000000"/>
+
+  <!-- Windshield -->
+  <rect x="340" y="160" width="56" height="80" rx="8" fill="#0072CE" opacity="0.6"/>
+
+  <!-- Side windows -->
+  <rect x="120" y="160" width="50" height="48" rx="6" fill="#0072CE" opacity="0.6"/>
+  <rect x="184" y="160" width="50" height="48" rx="6" fill="#0072CE" opacity="0.6"/>
+  <rect x="248" y="160" width="50" height="48" rx="6" fill="#0072CE" opacity="0.6"/>
+
+  <!-- Headlight -->
+  <rect x="396" y="240" width="20" height="20" rx="4" fill="#FFD700"/>
+
+  <!-- Wheels -->
+  <circle cx="170" cy="340" r="32" fill="#333333"/>
+  <circle cx="170" cy="340" r="16" fill="#666666"/>
+  <circle cx="350" cy="340" r="32" fill="#333333"/>
+  <circle cx="350" cy="340" r="16" fill="#666666"/>
+
+  <!-- Route number -->
+  <text x="140" y="306" font-family="Arial, sans-serif" font-weight="bold" font-size="48" fill="#FFFFFF">MCP</text>
+</svg>
