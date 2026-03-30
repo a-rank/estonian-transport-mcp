@@ -13,6 +13,7 @@ from estonian_transport_mcp import (
     plan_trip,
     nearby_stops,
     get_route,
+    get_trip_stops,
     tallinn_vehicles,
     OTP_GRAPHQL_URL,
     TALLINN_GPS_URL,
@@ -167,7 +168,7 @@ class TestGetDepartures:
                         "realtimeDeparture": 36120,   # 10:02
                         "realtime": True,
                         "headsign": "Kadriorg",
-                        "trip": {"route": {
+                        "trip": {"gtfsId": "1:tram1_trip", "route": {
                             "shortName": "1",
                             "longName": "Tram 1",
                             "mode": "TRAM",
@@ -183,6 +184,7 @@ class TestGetDepartures:
         assert "(scheduled 10:00)" in result
         assert "Kadriorg" in result
         assert "TRAM" in result
+        assert "trip `1:tram1_trip`" in result
 
     @respx.mock
     @pytest.mark.asyncio
@@ -198,7 +200,7 @@ class TestGetDepartures:
                         "realtimeDeparture": 43200,
                         "realtime": True,
                         "headsign": "Tartu",
-                        "trip": {"route": {
+                        "trip": {"gtfsId": "1:e1_trip", "route": {
                             "shortName": "E1",
                             "longName": "Express",
                             "mode": "RAIL",
@@ -408,6 +410,91 @@ class TestGetRoute:
         )
         result = await get_route("estonia:9999")
         assert "Route not found" in result
+
+
+# --- Tests for get_trip_stops ---
+
+
+class TestGetTripStops:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_found(self):
+        respx.post(OTP_GRAPHQL_URL).mock(
+            return_value=httpx.Response(200, json={"data": {"trip": {
+                "gtfsId": "1:151_20250329_1_1",
+                "tripHeadsign": "Balti jaam",
+                "route": {
+                    "shortName": "151",
+                    "longName": "Rihumägi - Balti jaam",
+                    "mode": "BUS",
+                    "agency": {"name": "Harjumaa ÜTK"},
+                },
+                "stoptimes": [
+                    {
+                        "scheduledArrival": 32400, "scheduledDeparture": 32400,
+                        "realtimeArrival": 32400, "realtimeDeparture": 32400,
+                        "realtime": False,
+                        "stop": {"gtfsId": "1:5432", "name": "Rihumägi", "code": "5432"},
+                    },
+                    {
+                        "scheduledArrival": 33300, "scheduledDeparture": 33360,
+                        "realtimeArrival": 33300, "realtimeDeparture": 33360,
+                        "realtime": False,
+                        "stop": {"gtfsId": "1:11501", "name": "Laulupeo", "code": "11501"},
+                    },
+                    {
+                        "scheduledArrival": 34500, "scheduledDeparture": 34500,
+                        "realtimeArrival": 34500, "realtimeDeparture": 34500,
+                        "realtime": False,
+                        "stop": {"gtfsId": "1:5001", "name": "Balti jaam", "code": "5001"},
+                    },
+                ],
+            }}})
+        )
+        result = await get_trip_stops("1:151_20250329_1_1")
+        assert "151" in result
+        assert "Rihumägi" in result
+        assert "Laulupeo" in result
+        assert "Balti jaam" in result
+        assert "09:00" in result  # 32400 = 9:00
+        assert "09:15" in result  # 33300 = 9:15
+        assert "09:35" in result  # 34500 = 9:35
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_realtime_delay(self):
+        respx.post(OTP_GRAPHQL_URL).mock(
+            return_value=httpx.Response(200, json={"data": {"trip": {
+                "gtfsId": "1:2_20250329_1_1",
+                "tripHeadsign": "Kopli",
+                "route": {
+                    "shortName": "2",
+                    "longName": "Kopli - Kadriorg",
+                    "mode": "TRAM",
+                    "agency": {"name": "TLT"},
+                },
+                "stoptimes": [
+                    {
+                        "scheduledArrival": 36000, "scheduledDeparture": 36000,
+                        "realtimeArrival": 36120, "realtimeDeparture": 36120,
+                        "realtime": True,
+                        "stop": {"gtfsId": "1:100", "name": "Kadriorg", "code": "K1"},
+                    },
+                ],
+            }}})
+        )
+        result = await get_trip_stops("1:2_20250329_1_1")
+        assert "10:02" in result  # realtime arrival (36120)
+        assert "scheduled 10:00" in result  # scheduled was 36000
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_not_found(self):
+        respx.post(OTP_GRAPHQL_URL).mock(
+            return_value=httpx.Response(200, json={"data": {"trip": None}})
+        )
+        result = await get_trip_stops("1:nonexistent")
+        assert "Trip not found" in result
 
 
 # --- Tests for tallinn_vehicles ---

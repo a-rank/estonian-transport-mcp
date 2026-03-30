@@ -11,6 +11,7 @@ An [MCP](https://modelcontextprotocol.io/) server for Estonian public transport 
 | `plan_trip` | Plan a trip between two coordinates with date/time options |
 | `nearby_stops` | Find stops within a radius of a location |
 | `get_route` | Get route details including all stop patterns |
+| `get_trip_stops` | Get full schedule of a specific trip — all stops with arrival/departure times |
 | `tallinn_vehicles` | Real-time GPS positions of Tallinn buses, trams, and trolleybuses |
 
 ## Prerequisites

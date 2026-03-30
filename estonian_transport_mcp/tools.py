@@ -84,7 +84,7 @@ async def get_departures(
                     name code gtfsId
                     stoptimesWithoutPatterns(numberOfDepartures: $n, startTime: $startTime) {
                         scheduledDeparture realtimeDeparture realtime headsign
-                        trip { route { shortName longName mode agency { name } } }
+                        trip { gtfsId route { shortName longName mode agency { name } } }
                     }
                 }
             }
@@ -99,7 +99,7 @@ async def get_departures(
                     name code gtfsId
                     stoptimesWithoutPatterns(numberOfDepartures: $n) {
                         scheduledDeparture realtimeDeparture realtime headsign
-                        trip { route { shortName longName mode agency { name } } }
+                        trip { gtfsId route { shortName longName mode agency { name } } }
                     }
                 }
             }
@@ -120,7 +120,8 @@ async def get_departures(
         scheduled = fmt_time_of_day(d["scheduledDeparture"])
         rt = f" (scheduled {scheduled})" if d["realtime"] and d["realtimeDeparture"] != d["scheduledDeparture"] else ""
         r = d["trip"]["route"]
-        lines.append(f"{time}{rt} — {r['mode']} **{r['shortName']}** → {d['headsign']} ({r['agency']['name']})")
+        trip_id = d["trip"]["gtfsId"]
+        lines.append(f"{time}{rt} — {r['mode']} **{r['shortName']}** → {d['headsign']} ({r['agency']['name']}) [trip `{trip_id}`]")
 
     return f"Departures from **{stop['name']}** ({stop.get('code') or stop['gtfsId']}):\n\n" + "\n".join(lines)
 
@@ -305,6 +306,72 @@ async def get_route(route_id: str) -> str:
         f"ID: `{route['gtfsId']}`\n\n"
         f"Patterns:\n\n" + "\n\n".join(patterns)
     )
+
+
+@mcp.tool()
+async def get_trip_stops(trip_id: str) -> str:
+    """Get the full schedule of a specific trip — all stops with arrival/departure times.
+
+    Use this to trace a bus/tram/train along its route and see when it arrives at each stop.
+    Trip IDs can be found in get_departures output.
+
+    Args:
+        trip_id: GTFS trip ID (e.g. '1:155_20250329_1_1'). Found in get_departures results.
+    """
+    data = await graphql(
+        """
+        query($id: String!) {
+            trip(id: $id) {
+                gtfsId
+                tripHeadsign
+                route { shortName longName mode agency { name } }
+                stoptimes {
+                    scheduledArrival scheduledDeparture
+                    realtimeArrival realtimeDeparture
+                    realtime
+                    stop { gtfsId name code }
+                }
+            }
+        }
+        """,
+        {"id": trip_id},
+    )
+    trip = data["trip"]
+    if not trip:
+        return f"Trip not found: {trip_id}"
+
+    route = trip["route"]
+    header = (
+        f"**{route['mode']} {route['shortName']}** — {route['longName']}\n"
+        f"Agency: {route['agency']['name']} | Headsign: {trip['tripHeadsign']}\n"
+        f"Trip ID: `{trip['gtfsId']}`\n"
+    )
+
+    lines = []
+    for i, st in enumerate(trip["stoptimes"]):
+        stop = st["stop"]
+        arr = fmt_time_of_day(st["realtimeArrival"])
+        dep = fmt_time_of_day(st["realtimeDeparture"])
+
+        if st["realtime"]:
+            sched_arr = fmt_time_of_day(st["scheduledArrival"])
+            sched_dep = fmt_time_of_day(st["scheduledDeparture"])
+            rt_note = ""
+            if sched_arr != arr or sched_dep != dep:
+                rt_note = f" (scheduled {sched_arr}–{sched_dep})"
+        else:
+            rt_note = ""
+
+        if arr == dep:
+            time_str = arr
+        else:
+            time_str = f"{arr}→{dep}"
+
+        lines.append(
+            f"  {i+1}. {time_str}{rt_note} — **{stop['name']}** ({stop.get('code') or stop['gtfsId']})"
+        )
+
+    return header + "\nStops:\n" + "\n".join(lines)
 
 
 @mcp.tool()

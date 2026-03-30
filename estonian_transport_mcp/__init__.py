@@ -12,6 +12,7 @@ from estonian_transport_mcp.tools import (
     plan_trip,
     nearby_stops,
     get_route,
+    get_trip_stops,
     tallinn_vehicles,
 )
 from estonian_transport_mcp.server import mcp, main
@@ -27,6 +28,7 @@ __all__ = [
     "plan_trip",
     "nearby_stops",
     "get_route",
+    "get_trip_stops",
     "tallinn_vehicles",
     "mcp",
     "main",
