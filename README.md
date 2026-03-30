@@ -81,13 +81,43 @@ Add to the `mcpServers` section:
 
 Restart Claude Desktop after saving the config.
 
+### Remote server (HTTP)
+
+Run as an HTTP server for remote access (e.g. from claude.ai/code on mobile):
+
+```bash
+estonian-transport-mcp --transport streamable-http --port 8000
+```
+
+Then connect to it from any MCP client using the URL `http://your-server:8000/mcp`.
+
+Example deployment with systemd on a VPS:
+
+```ini
+[Unit]
+Description=Estonian Transport MCP
+After=network.target
+
+[Service]
+ExecStart=/home/user/.local/bin/estonian-transport-mcp --transport streamable-http --port 8000
+Restart=always
+User=user
+
+[Install]
+WantedBy=multi-user.target
+```
+
 ### Manual testing
 
 ```bash
+# stdio mode (default)
 uvx estonian-transport-mcp
+
+# HTTP mode
+uvx estonian-transport-mcp --transport streamable-http --port 8000
 ```
 
-Or test interactively with the MCP Inspector:
+Test interactively with the MCP Inspector:
 
 ```bash
 npx @modelcontextprotocol/inspector uvx estonian-transport-mcp
