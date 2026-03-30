@@ -25,6 +25,4 @@
   <circle cx="350" cy="340" r="32" fill="#333333"/>
   <circle cx="350" cy="340" r="16" fill="#666666"/>
 
-  <!-- Route number -->
-  <text x="140" y="306" font-family="Arial, sans-serif" font-weight="bold" font-size="48" fill="#FFFFFF">MCP</text>
 </svg>
