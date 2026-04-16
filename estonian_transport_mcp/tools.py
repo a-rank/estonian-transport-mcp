@@ -126,16 +126,56 @@ async def get_departures(
     return f"Departures from **{stop['name']}** ({stop.get('code') or stop['gtfsId']}):\n\n" + "\n".join(lines)
 
 
-async def _resolve_place(name: str) -> tuple[float, float] | None:
-    """Resolve a place name to (lat, lon) via stop search."""
+async def _resolve_place(name: str) -> tuple[float, float] | str:
+    """Resolve a place name to (lat, lon) via stop search.
+
+    Returns (lat, lon) tuple on success, or an error string with candidates.
+    Supports:
+      - Coordinates: "59.437,24.745" or "59.437 24.745"
+      - Stop names: matched against OTP stop database
+    """
+    # Try parsing as coordinates first
+    stripped = name.strip()
+    for sep in [",", " "]:
+        if sep in stripped:
+            parts = stripped.split(sep, 1)
+            try:
+                lat, lon = float(parts[0].strip()), float(parts[1].strip())
+                if 57 <= lat <= 60 and 21 <= lon <= 29:  # roughly Estonia
+                    return lat, lon
+            except ValueError:
+                pass
+
     data = await graphql(
-        'query($name: String!) { stops(name: $name) { name lat lon } }',
+        'query($name: String!) { stops(name: $name) { name gtfsId lat lon } }',
         {"name": name},
     )
     stops = data["stops"]
-    if stops:
-        return stops[0]["lat"], stops[0]["lon"]
-    return None
+    if not stops:
+        return f'No stops found matching "{name}". Try a different name or use coordinates (lat,lon).'
+
+    # Deduplicate by name (same stop often has multiple platforms)
+    seen = {}
+    for s in stops:
+        key = s["name"]
+        if key not in seen:
+            seen[key] = s
+
+    unique = list(seen.values())
+
+    # If the top result name closely matches the query, use it
+    if unique[0]["name"].lower().startswith(name.lower()) or name.lower() in unique[0]["name"].lower():
+        return unique[0]["lat"], unique[0]["lon"]
+
+    # Multiple ambiguous results — return them for the LLM to pick
+    candidates = "\n".join(
+        f"  - {s['name']} ({s['lat']:.4f}, {s['lon']:.4f})"
+        for s in unique[:8]
+    )
+    return (
+        f'Ambiguous: "{name}" matched multiple stops:\n{candidates}\n'
+        f'Please use a more specific name or coordinates (lat,lon).'
+    )
 
 
 @mcp.tool()
@@ -153,8 +193,8 @@ async def plan_trip(
     """Plan a public transport trip between two locations in Estonia.
 
     Args:
-        from_place: Origin stop or place name (e.g. 'Viru', 'Balti jaam', 'Tartu bussijaam')
-        to_place: Destination stop or place name
+        from_place: Origin — stop name (e.g. 'Viru', 'Balti jaam') or coordinates ('59.437,24.745')
+        to_place: Destination — stop name or coordinates
         date: Travel date YYYY-MM-DD (default: today)
         time: Travel time HH:MM (default: now)
         arrive_by: If true, time is desired arrival time
@@ -164,11 +204,11 @@ async def plan_trip(
         transfer_penalty: Penalty per transfer in seconds — higher values prefer fewer transfers (default: 0)
     """
     origin = await _resolve_place(from_place)
-    if not origin:
-        return f'Could not find a stop matching "{from_place}". Try a different name.'
+    if isinstance(origin, str):
+        return origin
     destination = await _resolve_place(to_place)
-    if not destination:
-        return f'Could not find a stop matching "{to_place}". Try a different name.'
+    if isinstance(destination, str):
+        return destination
 
     from_lat, from_lon = origin
     to_lat, to_lon = destination

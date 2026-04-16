@@ -261,7 +261,7 @@ class TestPlanTrip:
     @pytest.mark.asyncio
     async def test_with_results(self):
         resolve_resp = httpx.Response(200, json={"data": {"stops": [
-            {"name": "Test Stop", "lat": 59.43, "lon": 24.75}
+            {"name": "Test Stop", "gtfsId": "1:100", "lat": 59.43, "lon": 24.75}
         ]}})
         plan_resp = httpx.Response(200, json={"data": {"plan": {"itineraries": [
             {
@@ -296,7 +296,7 @@ class TestPlanTrip:
             }
         ]}}})
         respx.post(OTP_GRAPHQL_URL).mock(side_effect=[resolve_resp, resolve_resp, plan_resp])
-        result = await plan_trip("Origin", "Destination")
+        result = await plan_trip("Test Stop", "Test Stop")
         assert "Option 1" in result
         assert "Walk" in result
         assert "BUS" in result
@@ -305,13 +305,42 @@ class TestPlanTrip:
 
     @respx.mock
     @pytest.mark.asyncio
+    async def test_with_coordinates(self):
+        """Test that coordinates bypass stop search entirely."""
+        plan_resp = httpx.Response(200, json={"data": {"plan": {"itineraries": [
+            {
+                "startTime": 1711616400000,
+                "endTime": 1711618200000,
+                "duration": 1800,
+                "walkDistance": 500,
+                "legs": [
+                    {
+                        "mode": "WALK",
+                        "startTime": 1711616400000,
+                        "endTime": 1711618200000,
+                        "duration": 1800,
+                        "distance": 500,
+                        "from": {"name": "Origin", "stop": None},
+                        "to": {"name": "Dest", "stop": None},
+                        "trip": None,
+                        "route": None,
+                    },
+                ],
+            }
+        ]}}})
+        respx.post(OTP_GRAPHQL_URL).mock(return_value=plan_resp)
+        result = await plan_trip("59.43,24.75", "59.44,24.76")
+        assert "Option 1" in result
+
+    @respx.mock
+    @pytest.mark.asyncio
     async def test_no_routes(self):
         resolve_resp = httpx.Response(200, json={"data": {"stops": [
-            {"name": "Test Stop", "lat": 59.43, "lon": 24.75}
+            {"name": "Test Stop", "gtfsId": "1:100", "lat": 59.43, "lon": 24.75}
         ]}})
         plan_resp = httpx.Response(200, json={"data": {"plan": {"itineraries": []}}})
         respx.post(OTP_GRAPHQL_URL).mock(side_effect=[resolve_resp, resolve_resp, plan_resp])
-        result = await plan_trip("Origin", "Destination")
+        result = await plan_trip("Test Stop", "Test Stop")
         assert "No routes found" in result
 
     @respx.mock
@@ -321,7 +350,20 @@ class TestPlanTrip:
             return_value=httpx.Response(200, json={"data": {"stops": []}})
         )
         result = await plan_trip("xyznonexistent", "Viru")
-        assert "Could not find" in result
+        assert "No stops found" in result
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_ambiguous_place(self):
+        respx.post(OTP_GRAPHQL_URL).mock(
+            return_value=httpx.Response(200, json={"data": {"stops": [
+                {"name": "Salme staadion", "gtfsId": "1:200", "lat": 58.22, "lon": 22.05},
+                {"name": "Staadion", "gtfsId": "1:201", "lat": 59.43, "lon": 24.75},
+            ]}})
+        )
+        result = await plan_trip("Kalevi staadion", "Viru")
+        assert "Ambiguous" in result
+        assert "Salme staadion" in result
 
 
 # --- Tests for nearby_stops ---
